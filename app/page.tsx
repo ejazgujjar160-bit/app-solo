@@ -6,7 +6,25 @@ import { cn } from "@/lib/utils"
 
 type GameState = "waiting" | "countdown" | "flying" | "crashed"
 
+type UserData = {
+  username: string
+  password: string
+  balance: number
+  level: number
+  xp: number
+}
+
 export default function F16ProEdition() {
+  // ---------------- AUTH ----------------
+  const [authMode, setAuthMode] = useState<"login" | "signup">("login")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+
+  const [username, setUsername] = useState("")
+  const [password, setPassword] = useState("")
+
+  const [user, setUser] = useState<UserData | null>(null)
+
+  // ---------------- GAME ----------------
   const [gameState, setGameState] = useState<GameState>("waiting")
   const [multiplier, setMultiplier] = useState(1.0)
 
@@ -16,20 +34,16 @@ export default function F16ProEdition() {
   const [bet1, setBet1] = useState(100)
   const [bet1Placed, setBet1Placed] = useState(false)
   const [bet1Cashed, setBet1Cashed] = useState(false)
-
   const [autoCashout1, setAutoCashout1] = useState(false)
   const [autoCashoutAt1, setAutoCashoutAt1] = useState(2.0)
-
   const [autoBet1, setAutoBet1] = useState(false)
 
   // BET 2
   const [bet2, setBet2] = useState(100)
   const [bet2Placed, setBet2Placed] = useState(false)
   const [bet2Cashed, setBet2Cashed] = useState(false)
-
   const [autoCashout2, setAutoCashout2] = useState(false)
   const [autoCashoutAt2, setAutoCashoutAt2] = useState(3.0)
-
   const [autoBet2, setAutoBet2] = useState(false)
 
   // Round + History
@@ -62,29 +76,148 @@ export default function F16ProEdition() {
   const startTime = useRef<number>(0)
   const crashPoint = useRef<number>(0)
 
+  const countdownTimer = useRef<NodeJS.Timeout | null>(null)
+
   // Smoke trail
   const [trail, setTrail] = useState<{ x: number; y: number; id: number }[]>([])
   const trailId = useRef(0)
 
-  // --- Load Audio (F16 engine same + crash extra) ---
+  // ---------------- HELPERS (LOCAL STORAGE USERS) ----------------
+  const getUsers = (): UserData[] => {
+    const saved = localStorage.getItem("f16_users")
+    return saved ? JSON.parse(saved) : []
+  }
+
+  const saveUsers = (users: UserData[]) => {
+    localStorage.setItem("f16_users", JSON.stringify(users))
+  }
+
+  // ---------------- AUTO LOGIN ----------------
   useEffect(() => {
-    // یہ آپ کی F16 engine sound ہے (NO CHANGE)
+    const logged = localStorage.getItem("f16_logged_user")
+    if (!logged) return
+
+    const parsed = JSON.parse(logged) as UserData
+    setUser(parsed)
+    setBalance(parsed.balance)
+    setLevel(parsed.level)
+    setXp(parsed.xp)
+    setIsLoggedIn(true)
+  }, [])
+
+  // ---------------- SAVE USER DATA LIVE ----------------
+  useEffect(() => {
+    if (!isLoggedIn || !user) return
+
+    const updatedUser: UserData = {
+      ...user,
+      balance,
+      level,
+      xp,
+    }
+
+    setUser(updatedUser)
+    localStorage.setItem("f16_logged_user", JSON.stringify(updatedUser))
+
+    // update user list too
+    const users = getUsers()
+    const newUsers = users.map((u) =>
+      u.username === updatedUser.username ? updatedUser : u
+    )
+    saveUsers(newUsers)
+  }, [balance, level, xp])
+
+  // ---------------- SIGNUP ----------------
+  const signup = () => {
+    if (!username || !password) return alert("Username اور Password لازمی ہیں")
+    if (password.length < 4) return alert("Password کم از کم 4 characters کا ہو")
+
+    const users = getUsers()
+
+    const exists = users.find((u) => u.username === username)
+    if (exists) return alert("یہ Username پہلے سے موجود ہے")
+
+    const newUser: UserData = {
+      username,
+      password,
+      balance: 10000,
+      level: 1,
+      xp: 0,
+    }
+
+    users.push(newUser)
+    saveUsers(users)
+
+    localStorage.setItem("f16_logged_user", JSON.stringify(newUser))
+
+    setUser(newUser)
+    setBalance(newUser.balance)
+    setLevel(newUser.level)
+    setXp(newUser.xp)
+
+    setIsLoggedIn(true)
+  }
+
+  // ---------------- LOGIN ----------------
+  const login = () => {
+    if (!username || !password) return alert("Username اور Password لازمی ہیں")
+
+    const users = getUsers()
+
+    const found = users.find((u) => u.username === username && u.password === password)
+
+    if (!found) return alert("Wrong username یا password")
+
+    localStorage.setItem("f16_logged_user", JSON.stringify(found))
+
+    setUser(found)
+    setBalance(found.balance)
+    setLevel(found.level)
+    setXp(found.xp)
+
+    setIsLoggedIn(true)
+  }
+
+  // ---------------- LOGOUT ----------------
+  const logout = () => {
+    localStorage.removeItem("f16_logged_user")
+
+    setIsLoggedIn(false)
+    setUser(null)
+    setUsername("")
+    setPassword("")
+    setAuthMode("login")
+
+    setGameState("waiting")
+    setMultiplier(1.0)
+    setBalance(10000)
+    setLevel(1)
+    setXp(0)
+
+    setBet1Placed(false)
+    setBet2Placed(false)
+    setTrail([])
+  }
+
+  // ---------------- AUDIO ----------------
+  useEffect(() => {
     engineAudio.current = new Audio("/audio/f16-engine.mp3")
     engineAudio.current.loop = true
     engineAudio.current.volume = 0.6
 
-    // crash sound optional (اگر فائل نہ ہو تو remove کر دیں)
     crashAudio.current = new Audio("/audio/explosion.mp3")
     crashAudio.current.volume = 0.8
 
     return () => {
       if (gameLoop.current) cancelAnimationFrame(gameLoop.current)
+      if (countdownTimer.current) clearInterval(countdownTimer.current)
+
       engineAudio.current?.pause()
       crashAudio.current?.pause()
     }
   }, [])
 
-  // --- Gift Timer ---
+  // ---------------- GIFT TIMER ----------------
   useEffect(() => {
     if (giftTimer <= 0) return
     const interval = setInterval(() => {
@@ -100,7 +233,7 @@ export default function F16ProEdition() {
     return () => clearInterval(interval)
   }, [giftTimer])
 
-  // --- Fake Players Live ---
+  // ---------------- FAKE PLAYERS ----------------
   useEffect(() => {
     const names = [
       "Ali", "Ahmed", "Umar", "Hassan", "Bilal",
@@ -125,7 +258,7 @@ export default function F16ProEdition() {
     return () => clearInterval(interval)
   }, [gameState])
 
-  // --- XP System ---
+  // ---------------- XP ----------------
   const addXp = (amount: number) => {
     setXp((prev) => {
       const total = prev + amount
@@ -137,13 +270,13 @@ export default function F16ProEdition() {
     })
   }
 
-  // --- Crash Formula (Aviator Like) ---
+  // ---------------- CRASH ----------------
   const generateCrashPoint = () => {
     const r = Math.random()
     return Math.max(1.0, 0.98 / (1 - r))
   }
 
-  // --- Effects ---
+  // ---------------- EFFECTS ----------------
   const triggerExplosion = () => {
     setShowExplosion(true)
     setTimeout(() => setShowExplosion(false), 1200)
@@ -159,9 +292,31 @@ export default function F16ProEdition() {
     setTimeout(() => setFlashRed(false), 500)
   }
 
-  // --- Round Start ---
+  // ---------------- SAFE AUDIO ----------------
+  const safePlayEngine = async () => {
+    try {
+      if (engineAudio.current) {
+        engineAudio.current.currentTime = 0
+        await engineAudio.current.play()
+      }
+    } catch (e) {}
+  }
+
+  const safePlayCrash = async () => {
+    try {
+      if (crashAudio.current) {
+        crashAudio.current.currentTime = 0
+        await crashAudio.current.play()
+      }
+    } catch (e) {}
+  }
+
+  // ---------------- START ROUND ----------------
   const startRound = () => {
+    if (gameState !== "waiting") return
+
     if (gameLoop.current) cancelAnimationFrame(gameLoop.current)
+    if (countdownTimer.current) clearInterval(countdownTimer.current)
 
     crashPoint.current = generateCrashPoint()
 
@@ -174,27 +329,23 @@ export default function F16ProEdition() {
     setCountdown(3)
 
     let count = 3
-    const timer = setInterval(() => {
+    countdownTimer.current = setInterval(() => {
       count -= 1
       setCountdown(count)
 
       if (count <= 0) {
-        clearInterval(timer)
+        if (countdownTimer.current) clearInterval(countdownTimer.current)
+        countdownTimer.current = null
 
         setGameState("flying")
         startTime.current = Date.now()
 
-        // F16 Engine Sound (No Change)
-        if (engineAudio.current) {
-          engineAudio.current.currentTime = 0
-          engineAudio.current.play()
-        }
+        safePlayEngine()
 
         const update = () => {
           const elapsed = (Date.now() - startTime.current) / 1000
           const nextVal = Math.exp(elapsed * 0.18)
 
-          // smoke trail
           setTrail((prev) => {
             const newTrail = [
               ...prev,
@@ -203,17 +354,14 @@ export default function F16ProEdition() {
             return newTrail.slice(-25)
           })
 
-          // Auto Cashout Bet 1
           if (bet1Placed && !bet1Cashed && autoCashout1 && nextVal >= autoCashoutAt1) {
             cashOut1(nextVal)
           }
 
-          // Auto Cashout Bet 2
           if (bet2Placed && !bet2Cashed && autoCashout2 && nextVal >= autoCashoutAt2) {
             cashOut2(nextVal)
           }
 
-          // CRASH
           if (nextVal >= crashPoint.current) {
             setMultiplier(crashPoint.current)
             setGameState("crashed")
@@ -221,29 +369,47 @@ export default function F16ProEdition() {
             setHistory((prev) => [crashPoint.current, ...prev].slice(0, 12))
 
             engineAudio.current?.pause()
-            crashAudio.current?.play()
+            safePlayCrash()
 
             triggerExplosion()
             triggerShake()
             triggerRedFlash()
-
-            if (navigator.vibrate) navigator.vibrate(250)
 
             addXp(10)
 
             if (gameLoop.current) cancelAnimationFrame(gameLoop.current)
             gameLoop.current = null
 
-            // Reset after crash
             setTimeout(() => {
               setGameState("waiting")
               setBet1Placed(false)
               setBet2Placed(false)
               setTrail([])
 
-              // AutoBet System
-              if (autoBet1) placeBet1()
-              if (autoBet2) placeBet2()
+              setTimeout(() => {
+                setBalance((prevBal) => {
+                  let newBal = prevBal
+                  let didBet = false
+
+                  if (autoBet1 && newBal >= bet1) {
+                    newBal -= bet1
+                    setBet1Placed(true)
+                    didBet = true
+                  }
+
+                  if (autoBet2 && newBal >= bet2) {
+                    newBal -= bet2
+                    setBet2Placed(true)
+                    didBet = true
+                  }
+
+                  if (didBet) {
+                    setTimeout(() => startRound(), 200)
+                  }
+
+                  return newBal
+                })
+              }, 300)
 
             }, 2000)
 
@@ -264,31 +430,37 @@ export default function F16ProEdition() {
     }, 1000)
   }
 
-  // --- Place Bet 1 ---
+  // ---------------- PLACE BET 1 ----------------
   const placeBet1 = () => {
     if (gameState !== "waiting") return
     if (bet1 <= 0) return
-    if (balance < bet1) return
 
-    setBalance((prev) => prev - bet1)
+    setBalance((prev) => {
+      if (prev < bet1) return prev
+      return prev - bet1
+    })
+
     setBet1Placed(true)
 
     if (!bet2Placed) startRound()
   }
 
-  // --- Place Bet 2 ---
+  // ---------------- PLACE BET 2 ----------------
   const placeBet2 = () => {
     if (gameState !== "waiting") return
     if (bet2 <= 0) return
-    if (balance < bet2) return
 
-    setBalance((prev) => prev - bet2)
+    setBalance((prev) => {
+      if (prev < bet2) return prev
+      return prev - bet2
+    })
+
     setBet2Placed(true)
 
     if (!bet1Placed) startRound()
   }
 
-  // --- CashOut 1 ---
+  // ---------------- CASHOUT 1 ----------------
   const cashOut1 = (manualMultiplier?: number) => {
     if (gameState !== "flying") return
     if (!bet1Placed || bet1Cashed) return
@@ -301,7 +473,7 @@ export default function F16ProEdition() {
     addXp(20)
   }
 
-  // --- CashOut 2 ---
+  // ---------------- CASHOUT 2 ----------------
   const cashOut2 = (manualMultiplier?: number) => {
     if (gameState !== "flying") return
     if (!bet2Placed || bet2Cashed) return
@@ -314,15 +486,15 @@ export default function F16ProEdition() {
     addXp(20)
   }
 
-  // --- Gift Claim ---
+  // ---------------- GIFT ----------------
   const claimGift = () => {
     if (!isGiftAvailable) return
     setBalance((prev) => prev + 500)
     setIsGiftAvailable(false)
-    setGiftTimer(60) // demo 60 seconds
+    setGiftTimer(60)
   }
 
-  // --- History Colors ---
+  // ---------------- HISTORY COLOR ----------------
   const historyColor = (val: number) => {
     if (val >= 10) return "bg-red-600/20 text-red-400 border-red-500/50"
     if (val >= 5) return "bg-purple-600/20 text-purple-400 border-purple-500/50"
@@ -330,6 +502,60 @@ export default function F16ProEdition() {
     return "bg-blue-600/20 text-blue-400 border-blue-500/50"
   }
 
+  // ---------------- AUTH SCREEN ----------------
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#060b13] text-white p-4">
+        <div className="bg-black border border-gray-700 rounded-2xl p-6 w-full max-w-sm">
+          <h1 className="text-2xl font-black text-green-500 mb-4 text-center">
+            F16 PRO {authMode === "login" ? "LOGIN" : "SIGNUP"}
+          </h1>
+
+          <input
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            placeholder="Enter Username"
+            className="w-full mb-3 p-3 rounded-xl bg-transparent border border-gray-700 text-white"
+          />
+
+          <input
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            type="password"
+            placeholder="Enter Password"
+            className="w-full mb-4 p-3 rounded-xl bg-transparent border border-gray-700 text-white"
+          />
+
+          {authMode === "login" ? (
+            <button
+              onClick={login}
+              className="w-full bg-green-600 py-3 rounded-xl font-black text-lg"
+            >
+              LOGIN
+            </button>
+          ) : (
+            <button
+              onClick={signup}
+              className="w-full bg-yellow-500 text-black py-3 rounded-xl font-black text-lg"
+            >
+              SIGNUP
+            </button>
+          )}
+
+          <button
+            onClick={() => setAuthMode(authMode === "login" ? "signup" : "login")}
+            className="w-full mt-3 text-sm underline text-gray-300"
+          >
+            {authMode === "login"
+              ? "Create new account (Signup)"
+              : "Already have account? Login"}
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  // ---------------- GAME UI ----------------
   return (
     <div
       className={cn(
@@ -337,7 +563,6 @@ export default function F16ProEdition() {
         shake && "animate-[shake_0.3s_linear_infinite]"
       )}
     >
-      {/* Shake CSS */}
       <style jsx>{`
         @keyframes shake {
           0% { transform: translate(2px, 1px); }
@@ -348,8 +573,15 @@ export default function F16ProEdition() {
         }
       `}</style>
 
-      {/* TOP BAR */}
       <header className="p-4 bg-[#0d121b] flex justify-between items-center border-b border-green-500/30">
+        <div className="flex flex-col">
+          <span className="text-xs text-gray-400">PLAYER</span>
+          <span className="font-bold text-green-400">{user?.username}</span>
+          <button onClick={logout} className="text-xs text-red-400 underline mt-1">
+            Logout
+          </button>
+        </div>
+
         <div className="flex flex-col">
           <span className="text-xs text-gray-400">YOUR LEVEL</span>
           <div className="flex items-center gap-2">
@@ -367,7 +599,6 @@ export default function F16ProEdition() {
           </div>
         </div>
 
-        {/* Gift */}
         <button
           onClick={claimGift}
           disabled={!isGiftAvailable}
@@ -401,10 +632,8 @@ export default function F16ProEdition() {
           flashRed && "bg-red-950"
         )}
       >
-        {/* Gradient */}
         <div className="absolute inset-0 bg-gradient-to-tr from-green-500/10 via-transparent to-purple-500/10" />
 
-        {/* Multiplier */}
         <div
           className={cn(
             "text-7xl font-black z-20 transition-colors",
@@ -414,14 +643,12 @@ export default function F16ProEdition() {
           {multiplier.toFixed(2)}x
         </div>
 
-        {/* Countdown */}
         {gameState === "countdown" && (
           <div className="absolute z-30 text-8xl font-black text-yellow-400 animate-pulse">
             {countdown}
           </div>
         )}
 
-        {/* Smoke Trail */}
         {trail.map((t) => (
           <div
             key={t.id}
@@ -433,7 +660,6 @@ export default function F16ProEdition() {
           />
         ))}
 
-        {/* Jet (F16 NO CHANGE) */}
         {(gameState === "flying" || gameState === "crashed") && (
           <div
             className="absolute transition-all duration-75 z-10"
@@ -455,25 +681,10 @@ export default function F16ProEdition() {
           </div>
         )}
 
-        {/* Explosion */}
         {showExplosion && (
           <div className="absolute z-40 text-7xl animate-ping">💥</div>
         )}
 
-        {/* Players Live */}
-        {gameState === "flying" && (
-          <div className="absolute left-2 top-2 bg-black/60 border border-gray-700 rounded-xl p-2 w-48 text-xs z-40">
-            <div className="font-bold text-green-400 mb-1">LIVE PLAYERS</div>
-            {players.map((p, i) => (
-              <div key={i} className="flex justify-between text-gray-200">
-                <span>{p.name}</span>
-                <span className="text-yellow-400">{p.bet}</span>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Crash Text */}
         {gameState === "crashed" && (
           <div className="absolute bottom-10 z-30 text-3xl font-black text-red-500 animate-pulse">
             CRASHED!
@@ -484,8 +695,7 @@ export default function F16ProEdition() {
       {/* CONTROL PANEL */}
       <footer className="p-4 bg-[#0d121b] rounded-t-3xl border-t border-gray-800">
         <div className="grid grid-cols-2 gap-3">
-
-          {/* BET 1 PANEL */}
+          {/* BET 1 */}
           <div className="bg-black rounded-2xl border border-gray-700 p-3">
             <div className="text-xs text-gray-400 mb-2 font-bold">BET 1</div>
 
@@ -496,31 +706,6 @@ export default function F16ProEdition() {
               onChange={(e) => setBet1(Number(e.target.value))}
               className="w-full bg-transparent border border-gray-700 rounded-xl text-center text-xl font-black py-2 mb-2 disabled:opacity-50"
             />
-
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-gray-400">AUTO CASHOUT</span>
-              <input
-                type="checkbox"
-                checked={autoCashout1}
-                onChange={(e) => setAutoCashout1(e.target.checked)}
-              />
-            </div>
-
-            <input
-              type="number"
-              value={autoCashoutAt1}
-              onChange={(e) => setAutoCashoutAt1(Number(e.target.value))}
-              className="w-full bg-transparent border border-gray-700 rounded-xl text-center text-sm py-2 mb-2"
-            />
-
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-gray-400">AUTO BET</span>
-              <input
-                type="checkbox"
-                checked={autoBet1}
-                onChange={(e) => setAutoBet1(e.target.checked)}
-              />
-            </div>
 
             {gameState === "flying" && bet1Placed ? (
               <button
@@ -551,7 +736,7 @@ export default function F16ProEdition() {
             )}
           </div>
 
-          {/* BET 2 PANEL */}
+          {/* BET 2 */}
           <div className="bg-black rounded-2xl border border-gray-700 p-3">
             <div className="text-xs text-gray-400 mb-2 font-bold">BET 2</div>
 
@@ -562,31 +747,6 @@ export default function F16ProEdition() {
               onChange={(e) => setBet2(Number(e.target.value))}
               className="w-full bg-transparent border border-gray-700 rounded-xl text-center text-xl font-black py-2 mb-2 disabled:opacity-50"
             />
-
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-gray-400">AUTO CASHOUT</span>
-              <input
-                type="checkbox"
-                checked={autoCashout2}
-                onChange={(e) => setAutoCashout2(e.target.checked)}
-              />
-            </div>
-
-            <input
-              type="number"
-              value={autoCashoutAt2}
-              onChange={(e) => setAutoCashoutAt2(Number(e.target.value))}
-              className="w-full bg-transparent border border-gray-700 rounded-xl text-center text-sm py-2 mb-2"
-            />
-
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] text-gray-400">AUTO BET</span>
-              <input
-                type="checkbox"
-                checked={autoBet2}
-                onChange={(e) => setAutoBet2(e.target.checked)}
-              />
-            </div>
 
             {gameState === "flying" && bet2Placed ? (
               <button
