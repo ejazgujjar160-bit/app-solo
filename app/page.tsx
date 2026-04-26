@@ -3,28 +3,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 export default function F16CrashGame() {
-  // States for Game Logic
   const [balance, setBalance] = useState(111.55);
-  const [bet, setBet] = useState(10);
+  const [betAmount, setBetAmount] = useState(10);
   const [multiplier, setMultiplier] = useState(1.00);
   const [isFlying, setIsFlying] = useState(false);
   const [crashed, setCrashed] = useState(false);
-  const [history, setHistory] = useState(["4.59x", "5.39x", "6.75x", "1.57x", "1.21x", "1.45x", "3.46x"]);
-  const [planePos, setPlanePos] = useState({ left: 0, top: 220, rotate: 0 });
-  const [showMenu, setShowMenu] = useState(false);
+  const [hasActiveBet, setHasActiveBet] = useState(false);
+  const [history, setHistory] = useState(["4.59x", "5.39x", "6.75x", "1.57x"]);
+  const [planePos, setPlanePos] = useState({ left: 0, top: 220 });
 
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Game Core Function
+  // راؤنڈ شروع کرنے کا فنکشن
   const startRound = () => {
     if (isFlying) return;
     
     setCrashed(false);
     setMultiplier(1.00);
     setIsFlying(true);
-    setPlanePos({ left: 0, top: 220, rotate: -20 });
+    setPlanePos({ left: 0, top: 220 });
 
-    const crashPoint = (Math.random() * 5 + 1.1); // Random crash between 1.1x and 6x
+    const crashPoint = (Math.random() * 4 + 1.2); 
 
     timerRef.current = setInterval(() => {
       setMultiplier((prev) => {
@@ -34,21 +33,46 @@ export default function F16CrashGame() {
           clearInterval(timerRef.current!);
           setIsFlying(false);
           setCrashed(true);
-          setHistory(h => [crashPoint.toFixed(2) + "x", ...h.slice(0, 6)]);
+          setHasActiveBet(false); // کریش ہونے پر بیٹ ختم
+          setHistory(h => [crashPoint.toFixed(2) + "x", ...h.slice(0, 5)]);
           
-          // Auto restart after 3 seconds
-          setTimeout(startRound, 3000);
+          setTimeout(startRound, 4000); // 4 سیکنڈ بعد نیا راؤنڈ
           return parseFloat(crashPoint.toFixed(2));
         }
 
-        // Plane Movement
-        const x = Math.min(nextValue * 45, 280); 
-        const y = Math.max(220 - nextValue * 15, 40);
-        setPlanePos({ left: x, top: y, rotate: -20 });
+        // جہاز کی حرکت
+        setPlanePos({ 
+          left: Math.min(nextValue * 40, 300), 
+          top: Math.max(220 - nextValue * 15, 30) 
+        });
 
         return parseFloat(nextValue.toFixed(2));
       });
-    }, 60);
+    }, 80);
+  };
+
+  // بیٹ لگانے کا بٹن
+  const handleBetClick = () => {
+    if (isFlying) {
+      alert("اگلے راؤنڈ کا انتظار کریں!");
+      return;
+    }
+    if (balance < betAmount) {
+      alert("بیلنس کم ہے!");
+      return;
+    }
+    setBalance(prev => prev - betAmount);
+    setHasActiveBet(true);
+  };
+
+  // کیش آؤٹ کرنے کا بٹن
+  const handleCashOut = () => {
+    if (hasActiveBet && isFlying && !crashed) {
+      const win = betAmount * multiplier;
+      setBalance(prev => prev + win);
+      setHasActiveBet(false);
+      alert(`کیش آؤٹ کامیاب! آپ نے ${win.toFixed(2)} PKR جیت لیے۔`);
+    }
   };
 
   useEffect(() => {
@@ -57,103 +81,90 @@ export default function F16CrashGame() {
   }, []);
 
   return (
-    <div style={{ background: '#0b0f18', color: 'white', minHeight: '100vh', fontFamily: 'Arial, sans-serif', overflowX: 'hidden' }}>
+    <div style={{ background: '#0b0f18', color: 'white', minHeight: '100vh', fontFamily: 'Arial, sans-serif' }}>
       
       {/* Top Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: '#121826', borderBottom: '1px solid #222' }}>
-        <div style={{ fontSize: '22px', fontWeight: 'bold', color: '#ff2b2b' }}>F16</div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: '14px' }}>
-          <div style={{ color: '#00ff7b', fontWeight: 'bold' }}>{balance.toFixed(2)} PKR</div>
-          <div style={{ background: '#1b2335', padding: '6px 10px', borderRadius: '8px', cursor: 'pointer' }} onClick={() => setShowMenu(!showMenu)}>☰</div>
-          <div style={{ background: '#1b2335', padding: '6px 10px', borderRadius: '8px' }}>💬</div>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', padding: '15px', background: '#121826', borderBottom: '1px solid #333' }}>
+        <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff2b2b' }}>F16</div>
+        <div style={{ color: '#00ff7b', fontWeight: 'bold', fontSize: '18px' }}>{balance.toFixed(2)} PKR</div>
       </div>
 
-      {/* History */}
-      <div style={{ padding: '10px', background: '#0f1524', display: 'flex', gap: '12px', overflowX: 'auto', borderBottom: '1px solid #222', fontSize: '14px' }}>
-        {history.map((val, i) => (
-          <span key={i} style={{ color: '#a3a3ff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{val}</span>
-        ))}
-      </div>
-
-      {/* Game Display Area */}
-      <div style={{ position: 'relative', height: '320px', background: 'radial-gradient(circle at center,#1b1b2b,#0a0a12)', margin: '12px', borderRadius: '18px', overflow: 'hidden', border: '1px solid #222' }}>
+      {/* Game Screen */}
+      <div style={{ 
+        position: 'relative', height: '350px', margin: '15px', borderRadius: '20px', overflow: 'hidden', border: '1px solid #444',
+        backgroundImage: 'url("https://images.unsplash.com/photo-1506744038136-46273834b3fb?q=80&w=1000")', // عارضی بیک گراؤنڈ
+        backgroundSize: 'cover'
+      }}>
         <div style={{ 
-          position: 'absolute', top: '40%', left: '50%', transform: 'translate(-50%, -50%)', 
-          fontSize: '60px', fontWeight: 'bold', color: crashed ? '#ff2b2b' : 'white',
-          textShadow: '0 0 20px rgba(255,0,0,0.3)', zIndex: 10
+          position: 'absolute', top: '35%', left: '50%', transform: 'translate(-50%, -50%)', 
+          fontSize: '65px', fontWeight: 'bold', zIndex: 10, color: crashed ? '#ff2b2b' : 'white',
+          textShadow: '0 0 20px rgba(0,0,0,0.8)'
         }}>
           {multiplier.toFixed(2)}x
           {crashed && <div style={{ fontSize: '20px', textAlign: 'center' }}>FLEW AWAY!</div>}
         </div>
 
-        {/* Trail Effect */}
-        <div style={{ 
-          position: 'absolute', height: '4px', background: 'red', borderRadius: '10px',
-          boxShadow: '0 0 15px red', left: 0, top: planePos.top + 35, width: planePos.left + 20,
-          transition: '0.1s linear'
-        }} />
-
-        <img 
-          src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/F-16_June_2008.jpg/320px-F-16_June_2008.jpg"
-          alt="F16"
-          style={{
-            position: 'absolute', width: '70px',
-            left: `${planePos.left}px`, top: `${planePos.top}px`,
-            transform: `rotate(${planePos.rotate}deg)`,
-            transition: '0.1s linear', zIndex: 5, borderRadius: '4px'
-          }}
-        />
-        
-        <div style={{ position: 'absolute', right: '10px', bottom: '10px', background: 'rgba(0,0,0,0.5)', padding: '5px 10px', borderRadius: '15px', fontSize: '12px' }}>
-          👥 1,436
-        </div>
+        {/* F16 Plane */}
+        {!crashed && (
+          <img 
+            src="https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/F-16_June_2008.jpg/320px-F-16_June_2008.jpg" 
+            style={{
+              position: 'absolute', width: '90px', borderRadius: '5px',
+              left: `${planePos.left}px`, top: `${planePos.top}px`,
+              transition: '0.1s linear', zIndex: 5
+            }}
+          />
+        )}
       </div>
 
-      {/* Betting Controls */}
-      <div style={{ padding: '0 12px 20px 12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        
-        <div style={{ background: '#121826', borderRadius: '16px', padding: '12px', border: '1px solid #222' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-            <div style={{ display: 'flex', background: '#1b2335', borderRadius: '10px', overflow: 'hidden' }}>
-              <button style={{ border: 'none', padding: '8px 15px', background: '#2c3857', color: 'white', fontWeight: 'bold' }}>Bet</button>
-              <button style={{ border: 'none', padding: '8px 15px', background: 'transparent', color: 'white' }}>Auto</button>
-            </div>
-            <span style={{ color: '#666', fontSize: '12px' }}>Panel 1</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+      {/* Betting Panel */}
+      <div style={{ padding: '0 15px' }}>
+        <div style={{ background: '#121826', padding: '20px', borderRadius: '18px', border: '1px solid #333' }}>
+          
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'center' }}>
             <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', background: '#0b0f18', padding: '8px', borderRadius: '10px', border: '1px solid #333', marginBottom: '8px' }}>
-                <button onClick={() => setBet(Math.max(10, bet - 10))} style={{ background: '#1b2335', color: 'white', border: 'none', width: '30px', borderRadius: '5px' }}>-</button>
-                <span style={{ fontWeight: 'bold' }}>{bet}</span>
-                <button onClick={() => setBet(bet + 10)} style={{ background: '#1b2335', color: 'white', border: 'none', width: '30px', borderRadius: '5px' }}>+</button>
+              <div style={{ background: '#0b0f18', padding: '10px', borderRadius: '10px', display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
+                <button onClick={() => setBetAmount(Math.max(10, betAmount - 10))} style={{ background: '#1b2335', color: 'white', border: 'none', width: '35px', borderRadius: '5px' }}>-</button>
+                <span style={{ fontSize: '20px', fontWeight: 'bold' }}>{betAmount}</span>
+                <button onClick={() => setBetAmount(betAmount + 10)} style={{ background: '#1b2335', color: 'white', border: 'none', width: '35px', borderRadius: '5px' }}>+</button>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px' }}>
-                {[10, 20, 50, 100, 200, 500, 1000, 5000].map(amt => (
-                  <button key={amt} onClick={() => setBet(amt)} style={{ background: '#1b2335', color: 'white', border: 'none', padding: '6px', borderRadius: '6px', fontSize: '11px' }}>{amt}</button>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
+                {[10, 50, 100, 500].map(amt => (
+                  <button key={amt} onClick={() => setBetAmount(amt)} style={{ background: '#1b2335', color: 'white', border: 'none', padding: '8px', borderRadius: '5px', fontSize: '12px' }}>{amt}</button>
                 ))}
               </div>
             </div>
-            <button 
-              onClick={() => alert('Bet Placed!')}
-              style={{ width: '40%', height: '80px', background: '#00c853', color: 'white', border: 'none', borderRadius: '12px', fontWeight: 'bold', fontSize: '18px', boxShadow: '0 0 15px rgba(0,200,83,0.4)' }}
-            >
-              BET<br/><span style={{ fontSize: '14px' }}>{bet} PKR</span>
-            </button>
-          </div>
-        </div>
 
+            {/* Dynamic Button (Bet or Cashout) */}
+            {!hasActiveBet ? (
+              <button 
+                onClick={handleBetClick}
+                disabled={isFlying}
+                style={{ 
+                  width: '140px', height: '90px', background: isFlying ? '#222' : '#00c853', 
+                  color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '15px', fontSize: '22px'
+                }}
+              >
+                BET
+              </button>
+            ) : (
+              <button 
+                onClick={handleCashOut}
+                disabled={!isFlying || crashed}
+                style={{ 
+                  width: '140px', height: '90px', background: '#ff9800', 
+                  color: 'white', fontWeight: 'bold', border: 'none', borderRadius: '15px', fontSize: '18px'
+                }}
+              >
+                CASH OUT<br/>{(betAmount * multiplier).toFixed(2)}
+              </button>
+            )}
+          </div>
+
+        </div>
       </div>
 
-      {/* Menu Popup */}
-      {showMenu && (
-        <div style={{ position: 'fixed', top: '60px', right: '20px', background: '#121826', border: '1px solid #333', borderRadius: '12px', padding: '10px', width: '180px', zIndex: 100 }}>
-          <p style={{ padding: '8px', borderBottom: '1px solid #222', fontSize: '14px' }}>📌 Game Data</p>
-          <p style={{ padding: '8px', borderBottom: '1px solid #222', fontSize: '14px' }}>🎮 History</p>
-          <p style={{ padding: '8px', fontSize: '14px' }}>⚙ Settings</p>
-        </div>
-      )}
     </div>
   );
 }
