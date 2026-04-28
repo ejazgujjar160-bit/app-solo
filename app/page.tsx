@@ -9,26 +9,34 @@ export default function F16AviatorFinal() {
   const [planePos, setPlanePos] = useState({ x: 0, y: 0 });
   const [loadingProgress, setLoadingProgress] = useState(100);
 
-  // ٹائمرز کے لیے ریفرنسز
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // بیٹنگ سٹیٹس
-  const [bet1, setBet1] = useState({ amount: 100, hasBet: false, auto: false, autoValue: 2.00 });
-  const [bet2, setBet2] = useState({ amount: 100, hasBet: false, auto: false, autoValue: 2.00 });
+  // بیٹنگ سٹیٹس (ڈیفالٹ رقم 16.00 جیسی اسکرین شاٹ میں ہے)
+  const [bet1, setBet1] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
+  const [bet2, setBet2] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
 
-  // گیم لاجک: راؤنڈ شروع کرنا
+  // راؤنڈ شروع کرنے کا لاجک (25% وننگ ریٹ کے ساتھ)
   const startRound = () => {
     setGameState('flying');
     setMultiplier(1.00);
     setPlanePos({ x: 0, y: 0 });
-    const crashAt = (Math.random() * 8 + 1.1).toFixed(2); // رینڈم کریش پوائنٹ
+
+    // --- بہتر کنٹرولڈ لاجک (سو میں سے 25 جیت) ---
+    const chance = Math.random() * 100;
+    let crashAt;
+    if (chance < 75) {
+      // 75% بار جہاز 1.10 سے 1.95 کے درمیان گرے گا (لوگ ہاریں گے)
+      crashAt = (Math.random() * 0.85 + 1.10).toFixed(2);
+    } else {
+      // 25% بار جہاز 2.00 سے 8.00 تک جائے گا (لوگ جیتیں گے)
+      crashAt = (Math.random() * 6 + 2.00).toFixed(2);
+    }
 
     gameTimerRef.current = setInterval(() => {
       setMultiplier(prev => {
         const next = parseFloat((prev + 0.02).toFixed(2));
-
-        // اٹو کیش آؤٹ لاجک
+        
         if (bet1.hasBet && bet1.auto && next >= bet1.autoValue) cashOut(1, next);
         if (bet2.hasBet && bet2.auto && next >= bet2.autoValue) cashOut(2, next);
 
@@ -38,24 +46,21 @@ export default function F16AviatorFinal() {
           return next;
         }
 
-        // جہاز اور گراف کی حرکت (16:9 تناسب کے لیے)
-        const x = Math.min(next * 35, 290); // زیادہ سے زیادہ چوڑائی
-        const y = Math.min(next * 18, 160); // زیادہ سے زیادہ اونچائی
+        // جہاز کی موومنٹ کو اسکرین کے اندر رکھنا
+        const x = Math.min(next * 30, 260);
+        const y = Math.min(next * 20, 140);
         setPlanePos({ x, y });
-
         return next;
       });
     }, 80);
   };
 
-  // گیم لاجک: کریش ہونا اور اگلا راؤنڈ
   const finishRound = (point: number) => {
     setGameState('crashed');
     setBet1(prev => ({ ...prev, hasBet: false }));
     setBet2(prev => ({ ...prev, hasBet: false }));
-    setHistory(prev => [`${point}x`, ...prev.slice(0, 6)]);
+    setHistory(prev => [`${point}x`, ...prev.slice(0, 10)]);
     
-    // 5 سیکنڈ کی لوڈنگ پٹی
     let time = 100;
     setGameState('waiting');
     loadingTimerRef.current = setInterval(() => {
@@ -68,8 +73,8 @@ export default function F16AviatorFinal() {
     }, 100);
   };
 
-  // کیش آؤٹ کرنے کا فنکشن
   const cashOut = (panel: number, currentMult: number) => {
+    if (gameState !== 'flying') return;
     const winningMult = parseFloat(currentMult.toFixed(2));
     if (panel === 1 && bet1.hasBet) {
       setBalance(prev => prev + (bet1.amount * winningMult));
@@ -80,7 +85,6 @@ export default function F16AviatorFinal() {
     }
   };
 
-  // بیٹ لگانے کا فنکشن
   const placeBet = (panel: number) => {
     if (gameState !== 'waiting') return;
     if (panel === 1 && balance >= bet1.amount) {
@@ -92,11 +96,9 @@ export default function F16AviatorFinal() {
     }
   };
 
-  // رقم تبدیل کرنے کا فنکشن (لمٹ 15000)
-  const changeBetAmount = (panel: number, amount: number) => {
-    let newAmount = Math.max(10, Math.min(15000, amount));
-    if (panel === 1) setBet1(prev => ({ ...prev, amount: newAmount }));
-    else setBet2(prev => ({ ...prev, amount: newAmount }));
+  const changeBetAmount = (panel: number, val: number) => {
+    if (panel === 1) setBet1(prev => ({ ...prev, amount: Math.max(1, Math.min(15000, prev.amount + val)) }));
+    else setBet2(prev => ({ ...prev, amount: Math.max(1, Math.min(15000, prev.amount + val)) }));
   };
 
   useEffect(() => {
@@ -107,111 +109,79 @@ export default function F16AviatorFinal() {
     };
   }, []);
 
-  // بیٹنگ پینل کا کمپوننٹ
+  // --- اسکرین شاٹ والا ڈیزائن کمپوننٹ ---
   const BetControlPanel = ({ betData, setBetData, panelNum }: any) => (
-    <div style={{ background: '#121826', padding: '12px', borderRadius: '15px', border: '1px solid #333' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px', fontSize: '12px' }}>
-        <button 
-          onClick={() => setBetData({...betData, auto: !betData.auto})} 
-          style={{ background: betData.auto ? '#00c853' : '#1b2335', color: 'white', border: 'none', padding: '3px 10px', borderRadius: '5px' }}
-        >
-          Auto {betData.auto ? 'ON' : 'OFF'}
-        </button>
-        {betData.auto && (
-          <input type="number" step="0.1" value={betData.autoValue} onChange={(e) => setBetData({...betData, autoValue: Number(e.target.value)})} style={{ width: '50px', background: '#0b0f18', color: 'white', border: '1px solid #333', fontSize: '12px', padding: '2px' }} />
-        )}
+    <div style={{ background: '#1b1c20', padding: '12px', borderRadius: '15px', border: '1px solid #2c2d31' }}>
+      <div style={{ display: 'flex', background: '#000', borderRadius: '20px', padding: '2px', marginBottom: '10px' }}>
+        <button onClick={() => setBetData({...betData, auto: false})} style={{ flex: 1, border: 'none', background: !betData.auto ? '#2c2d31' : 'transparent', color: '#fff', padding: '5px', borderRadius: '20px', fontSize: '13px' }}>Bet</button>
+        <button onClick={() => setBetData({...betData, auto: true})} style={{ flex: 1, border: 'none', background: betData.auto ? '#2c2d31' : 'transparent', color: '#fff', padding: '5px', borderRadius: '20px', fontSize: '13px' }}>Auto</button>
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '10px' }}>
-        {/* پلس مائنس اور رقم */}
-        <div style={{ display: 'flex', alignItems: 'center', background: '#0b0f18', borderRadius: '8px', border: '1px solid #333', flex: 1, padding: '5px' }}>
-          <button onClick={() => changeBetAmount(panelNum, betData.amount - 100)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px' }}>−</button>
-          <input type="number" value={betData.amount} onChange={(e) => changeBetAmount(panelNum, Number(e.target.value))} style={{ flex: 1, background: 'none', color: 'white', border: 'none', textAlign: 'center', fontSize: '16px', fontWeight: 'bold' }} />
-          <button onClick={() => changeBetAmount(panelNum, betData.amount + 100)} style={{ background: 'none', border: 'none', color: 'white', fontSize: '20px' }}>+</button>
+      <div style={{ display: 'flex', gap: '10px', height: '80px' }}>
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#000', borderRadius: '20px', padding: '2px 10px', border: '1px solid #333' }}>
+            <button onClick={() => changeBetAmount(panelNum, -1)} style={{ background: '#333', color: 'white', border: 'none', width: '24px', height: '24px', borderRadius: '50%', fontSize: '18px' }}>−</button>
+            <span style={{ fontWeight: 'bold', fontSize: '16px' }}>{betData.amount.toFixed(2)}</span>
+            <button onClick={() => changeBetAmount(panelNum, 1)} style={{ background: '#333', color: 'white', border: 'none', width: '24px', height: '24px', borderRadius: '50%', fontSize: '18px' }}>+</button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px' }}>
+            {[100, 500, 1000, 5000].map(amt => (
+              <button key={amt} onClick={() => setBetData({...betData, amount: amt})} style={{ background: '#2c2d31', border: 'none', color: '#9ea0a3', borderRadius: '4px', fontSize: '11px', padding: '3px' }}>{amt}</button>
+            ))}
+          </div>
         </div>
 
-        {/* بیٹ/کیش آؤٹ بٹن */}
+        {/* متحرک بٹن: Bet یا Cash Out */}
         {!betData.hasBet ? (
-          <button onClick={() => placeBet(panelNum)} disabled={gameState !== 'waiting'} style={{ width: '110px', height: '45px', background: gameState === 'waiting' ? '#00c853' : '#333', borderRadius: '10px', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '18px' }}>
-            BET
+          <button onClick={() => placeBet(panelNum)} disabled={gameState !== 'waiting'} style={{ flex: 1, background: gameState === 'waiting' ? '#28a745' : '#444', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
+            <div style={{ fontSize: '18px', fontWeight: 'bold' }}>BET</div>
+            <div style={{ fontSize: '12px' }}>{betData.amount.toFixed(2)} PKR</div>
           </button>
         ) : (
-          <button onClick={() => cashOut(panelNum, multiplier)} disabled={gameState !== 'flying'} style={{ width: '110px', height: '45px', background: '#ff9800', borderRadius: '10px', border: 'none', color: 'white', fontWeight: 'bold', fontSize: '14px' }}>
-            CASH OUT<br/>{(betData.amount * multiplier).toFixed(2)}
+          <button onClick={() => cashOut(panelNum, multiplier)} disabled={gameState !== 'flying'} style={{ flex: 1, background: '#ff9800', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold' }}>CASH OUT</div>
+            <div style={{ fontSize: '16px' }}>{(betData.amount * multiplier).toFixed(2)} PKR</div>
           </button>
         )}
-      </div>
-
-      {/* کوئیک بیٹ بٹنز */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '5px' }}>
-        {[100, 200, 500, 1000].map(amt => (
-          <button key={amt} onClick={() => changeBetAmount(panelNum, amt)} style={{ background: '#1b2335', color: 'white', border: 'none', padding: '6px', borderRadius: '6px', fontSize: '12px' }}>{amt}</button>
-        ))}
       </div>
     </div>
   );
 
   return (
     <div style={{ background: '#0b0f18', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
-      
-      {/* Top Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: '#121826' }}>
         <div style={{ color: 'red', fontWeight: 'bold', fontSize: '22px' }}>F16</div>
         <div style={{ color: '#00ff7b', fontWeight: 'bold', fontSize: '18px' }}>{balance.toFixed(2)} PKR</div>
       </div>
 
-      {/* History */}
-      <div style={{ display: 'flex', gap: '8px', padding: '8px', overflowX: 'auto', background: '#0a0e17' }}>
+      <div style={{ display: 'flex', gap: '5px', padding: '8px', overflowX: 'auto', background: '#0a0e17' }}>
         {history.map((h, i) => (
-          <span key={i} style={{ color: '#a3a3ff', fontSize: '13px', fontWeight: 'bold', background: '#1b2335', padding: '2px 8px', borderRadius: '10px' }}>{h}</span>
+          <span key={i} style={{ color: '#a3a3ff', fontSize: '11px', background: '#1b2335', padding: '2px 8px', borderRadius: '10px' }}>{h}</span>
         ))}
       </div>
 
-      {/* Game Stage (YouTube Long Video Ratio: 16:9) */}
-      <div style={{ 
-        position: 'relative', width: '95%', margin: '15px auto', borderRadius: '20px', overflow: 'hidden', border: '2px solid #333',
-        aspectRatio: '16/9', // یہ سائز کو لانگ ویڈیو جیسا بنا دے گا
-        backgroundImage: 'url("/background.jpg")', backgroundSize: 'cover', backgroundPosition: 'center'
-      }}>
-        
-        {/* Multiplier / Waitting Text */}
-        <div style={{ position: 'absolute', width: '100%', textAlign: 'center', top: '35%', fontSize: '60px', fontWeight: 'bold', zIndex: 10, textShadow: '0 0 15px rgba(0,0,0,0.8)' }}>
-          {gameState === 'waiting' ? <span style={{color: 'red', fontSize: '18px'}}>WAITING...</span> : multiplier.toFixed(2) + "x"}
+      <div style={{ position: 'relative', width: '95%', margin: '10px auto', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333', aspectRatio: '16/9', background: '#000' }}>
+        <div style={{ position: 'absolute', width: '100%', textAlign: 'center', top: '35%', fontSize: '50px', fontWeight: 'bold', zIndex: 10 }}>
+          {gameState === 'waiting' ? <span style={{fontSize: '16px', color: 'red'}}>WAITING FOR NEXT ROUND...</span> : multiplier.toFixed(2) + "x"}
         </div>
-
-        {/* نیا گراف اور جہاز کا ڈیزائن (Z-index Fix) */}
+        
         {gameState === 'flying' && (
           <>
-            {/* جہاز کے پیچھے گراف کی لائن (SVG Curve) */}
-            <svg style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 4, left: 0, bottom: 0 }}>
-              <path 
-                d={`M 0 200 Q ${planePos.x / 2} ${200 - planePos.y / 1.5} ${planePos.x} ${200 - planePos.y}`} 
-                stroke="#00ff00" // سبز رنگ کا گراف
-                strokeWidth="5" 
-                fill="none" 
-                style={{ transition: 'linear 0.08s' }}
-              />
+            <svg style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 4 }}>
+              <path d={`M 0 180 Q ${planePos.x/2} ${180 - planePos.y/1.5} ${planePos.x} ${180 - planePos.y}`} stroke="#28a745" strokeWidth="4" fill="none" />
             </svg>
-            {/* جہاز کی تصویر - گراف کے اوپر */}
-            <img 
-              src="/jet.png" 
-              style={{ position: 'absolute', width: '100px', left: planePos.x - 20, bottom: planePos.y - 15, transition: 'linear 0.08s', zIndex: 5 }} 
-            />
+            <img src="/f16-jet.png" style={{ position: 'absolute', width: '80px', left: planePos.x - 20, bottom: planePos.y - 10, zIndex: 5 }} alt="jet" />
           </>
         )}
 
-        {/* لوڈنگ پٹی */}
         {gameState === 'waiting' && (
-          <div style={{ position: 'absolute', bottom: 0, width: '100%', height: '5px', background: '#333' }}>
-            <div style={{ width: `${loadingProgress}%`, height: '100%', background: 'red', transition: 'linear 0.1s' }} />
+          <div style={{ position: 'absolute', bottom: 0, width: '100%', height: '4px', background: '#333' }}>
+            <div style={{ width: `${loadingProgress}%`, height: '100%', background: 'red' }} />
           </div>
         )}
-        
-        <div style={{ position: 'absolute', right: '10px', bottom: '10px', fontSize: '14px', color: '#aaa', background: 'rgba(0,0,0,0.5)', padding: '3px 8px', borderRadius: '10px' }}>👥 1,436</div>
       </div>
 
-      {/* Two Betting Panels */}
-      <div style={{ padding: '0 10px 20px 10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+      <div style={{ padding: '10px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
         <BetControlPanel betData={bet1} setBetData={setBet1} panelNum={1} />
         <BetControlPanel betData={bet2} setBetData={setBet2} panelNum={2} />
       </div>
