@@ -23,7 +23,7 @@ export default function F16CrashGame() {
   const [multiplier, setMultiplier] = useState(1.0);
   const [isFlying, setIsFlying] = useState(false);
   const [history, setHistory] = useState(["4.59x", "1.21x"]);
-  const intervalRef = useRef(null);
+  const intervalRef = useRef<any>(null);
 
   const handleSignUp = () => {
     if (!email) return alert("Email adds karein");
@@ -41,11 +41,14 @@ export default function F16CrashGame() {
     setIsFlying(true);
     let currentMult = 1.0;
     const crashPoint = (Math.random() * 5 + 1.1).toFixed(2);
+    
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    
     intervalRef.current = setInterval(() => {
       currentMult += 0.02;
       setMultiplier(parseFloat(currentMult.toFixed(2)));
       if (currentMult >= parseFloat(crashPoint)) {
-        clearInterval(intervalRef.current);
+        if (intervalRef.current) clearInterval(intervalRef.current);
         setIsFlying(false);
         setHistory(prev => [crashPoint + "x", ...prev.slice(0, 5)]);
         setTimeout(() => setMultiplier(1.0), 2000);
@@ -55,7 +58,7 @@ export default function F16CrashGame() {
 
   const cashOut = () => {
     if (isFlying) {
-      clearInterval(intervalRef.current);
+      if (intervalRef.current) clearInterval(intervalRef.current);
       setIsFlying(false);
       const winAmount = bet * multiplier;
       setBalance(prev => prev + winAmount);
@@ -66,7 +69,7 @@ export default function F16CrashGame() {
 
   if (!user) {
     return (
-      <div style={{ padding: '50px', textAlign: 'center', background: '#0b0f18', height: '100vh', color: 'white' }}>
+      <div style={{ padding: '50px', textAlign: 'center', background: '#0b0f18', minHeight: '100vh', color: 'white' }}>
         <h1 style={{color: '#ff2b2b'}}>F-16 CRASH</h1>
         <input type="email" placeholder="Email likhein" value={email} onChange={(e) => setEmail(e.target.value)} style={{ padding: '12px', borderRadius: '8px', margin: '10px', width: '250px', color: 'black' }} />
         <br />
@@ -81,14 +84,14 @@ export default function F16CrashGame() {
         <div style={{ fontSize: '24px', fontWeight: 'bold', color: '#ff2b2b' }}>F16</div>
         <div style={{ color: '#00ff7b', fontWeight: 'bold' }}>{balance.toFixed(2)} PKR</div>
       </div>
-      <div style={{ position: 'relative', height: '300px', background: '#0f1524', margin: '10px', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333' }}>
-        <div style={{ textAlign: 'center', paddingTop: '80px', fontSize: '50px', fontWeight: 'bold' }}>{multiplier.toFixed(2)}x</div>
+      <div style={{ position: 'relative', height: '300px', background: '#0f1524', margin: '10px', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ fontSize: '50px', fontWeight: 'bold' }}>{multiplier.toFixed(2)}x</div>
       </div>
-      <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-around', background: '#121826' }}>
+      <div style={{ padding: '20px', display: 'flex', justifyContent: 'space-around', background: '#121826', position: 'fixed', bottom: 0, width: '100%' }}>
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button onClick={() => setBet(prev => Math.max(10, prev - 10))} style={{ padding: '10px', background: '#333', color: 'white' }}>-</button>
-          <span>{bet}</span>
-          <button onClick={() => setBet(prev => prev + 10)} style={{ padding: '10px', background: '#333', color: 'white' }}>+</button>
+          <button onClick={() => setBet(prev => Math.max(10, prev - 10))} style={{ padding: '10px 20px', background: '#333', color: 'white', borderRadius: '5px' }}>-</button>
+          <span style={{ fontSize: '20px' }}>{bet}</span>
+          <button onClick={() => setBet(prev => prev + 10)} style={{ padding: '10px 20px', background: '#333', color: 'white', borderRadius: '5px' }}>+</button>
         </div>
         {!isFlying ? (
           <button onClick={startRound} style={{ padding: '15px 40px', background: '#00c853', borderRadius: '10px', fontWeight: 'bold' }}>BET</button>
