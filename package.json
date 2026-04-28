@@ -14,7 +14,8 @@
     "react-dom": "18.2.0",
     "lucide-react": "latest",
     "clsx": "latest",
-    "tailwind-merge": "latest"
+    "tailwind-merge": "latest",
+    "firebase": "^10.11.1"
   },
   "devDependencies": {
     "typescript": "5.4.5",
