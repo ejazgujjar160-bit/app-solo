@@ -1,8 +1,9 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, set, onValue, get, update } from "firebase/database";
+import { getDatabase, ref, onValue, update } from "firebase/database";
 
+// Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBQ3gSnL9qb8lR1oTPAFVkg3-ka0Lj_uz4",
   authDomain: "f-16-5fbf8.firebaseapp.com",
@@ -16,37 +17,42 @@ const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
 export default function F16AviatorFinal() {
-  const [user, setUser] = useState(null);
-  const [balance, setBalance] = useState(0);
-  const [multiplier, setMultiplier] = useState(1.00);
-  const [gameState, setGameState] = useState('waiting'); 
-  const [history, setHistory] = useState(["1.14x", "3.5x", "1.20x", "1.05x", "2.10x"]);
+  // TypeScript Fix: Defining user as string | null
+  const [user, setUser] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number>(0);
+  const [multiplier, setMultiplier] = useState<number>(1.00);
+  const [gameState, setGameState] = useState<'waiting' | 'flying' | 'crashed'>('waiting'); 
+  const [history, setHistory] = useState<string[]>(["1.14x", "3.5x", "1.20x", "1.05x", "2.10x"]);
   const [planePos, setPlanePos] = useState({ x: 0, y: 0 });
-  const [loadingProgress, setLoadingProgress] = useState(0);
-  const [showFullHistory, setShowFullHistory] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<number>(0);
+  const [showFullHistory, setShowFullHistory] = useState<boolean>(false);
 
   const [bet1, setBet1] = useState({ amount: 16.00, hasBet: false, auto: false, autoVal: 2.0, cashedOut: false });
   const [bet2, setBet2] = useState({ amount: 16.00, hasBet: false, auto: false, autoVal: 2.0, cashedOut: false });
 
-  const gameTimerRef = useRef(null);
+  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const maxBetLimit = 15000;
 
   useEffect(() => {
     const savedUser = localStorage.getItem("f16_user");
     if (savedUser) {
-      setUser(savedUser);
+      // Fixed: Type assertion to string
+      setUser(savedUser as string);
       onValue(ref(db, 'users/' + savedUser), (snapshot) => {
         if (snapshot.exists()) setBalance(snapshot.val().balance);
       });
     }
     startWaitingPeriod();
+    return () => {
+        if (gameTimerRef.current) clearInterval(gameTimerRef.current);
+    };
   }, []);
 
-  const updateBalance = async (newBalance) => {
+  const updateBalance = async (newBalance: number) => {
     if (user) await update(ref(db, 'users/' + user), { balance: newBalance });
   };
 
-  const handleCashOut = (betNum) => {
+  const handleCashOut = (betNum: number) => {
     if (gameState !== 'flying') return;
     if (betNum === 1 && bet1.hasBet && !bet1.cashedOut) {
       updateBalance(balance + (bet1.amount * multiplier));
@@ -75,6 +81,7 @@ export default function F16AviatorFinal() {
     let totalBet = 0;
     if (bet1.hasBet) totalBet += bet1.amount;
     if (bet2.hasBet) totalBet += bet2.amount;
+    
     if (totalBet > balance) {
         setBet1(p => ({...p, hasBet: false}));
         setBet2(p => ({...p, hasBet: false}));
@@ -88,13 +95,12 @@ export default function F16AviatorFinal() {
     setBet1(prev => ({ ...prev, cashedOut: false }));
     setBet2(prev => ({ ...prev, cashedOut: false }));
     
-    // پرافٹ لاجک: 55% چانس کہ 1.50x سے نیچے گرے، 45% چانس کہ اوپر جائے
-    let crashAt;
+    let crashAt: number;
     const luck = Math.random() * 100;
     if (luck <= 55) {
-      crashAt = parseFloat((Math.random() * 0.5 + 1.01).toFixed(2)); // 1.01 to 1.50
+      crashAt = parseFloat((Math.random() * 0.49 + 1.01).toFixed(2)); 
     } else {
-      crashAt = parseFloat((Math.random() * 3 + 1.51).toFixed(2)); // 1.51 to 4.50
+      crashAt = parseFloat((Math.random() * 3 + 1.51).toFixed(2)); 
     }
 
     gameTimerRef.current = setInterval(() => {
@@ -105,15 +111,13 @@ export default function F16AviatorFinal() {
         if (bet2.hasBet && bet2.auto && !bet2.cashedOut && next >= bet2.autoVal) handleCashOut(2);
 
         if (next >= crashAt) {
-          clearInterval(gameTimerRef.current);
+          if (gameTimerRef.current) clearInterval(gameTimerRef.current);
           setGameState('crashed');
-          // ہسٹری اپ ڈیٹ کریں
           setHistory(h => [`${next}x`, ...h].slice(0, 50)); 
           setTimeout(() => startWaitingPeriod(), 3000);
           return next;
         }
         
-        // جہاز کی اونچائی کنٹرول کی گئی ہے (Maximum 160px bottom)
         setPlanePos({ 
           x: Math.min((next - 1) * 70 + 10, 260), 
           y: Math.min(Math.pow(next - 1, 1.3) * 40 + 10, 160) 
@@ -123,7 +127,7 @@ export default function F16AviatorFinal() {
     }, 70);
   };
 
-  const BetControlPanel = ({ betData, setBetData, num }) => (
+  const BetControlPanel = ({ betData, setBetData, num }: any) => (
     <div style={{ background: '#1b1c20', padding: '12px', borderRadius: '15px', border: '1px solid #2c2d31', marginBottom: '8px' }}>
       <div style={{ display: 'flex', background: '#000', borderRadius: '20px', padding: '2px', marginBottom: '8px' }}>
         <button onClick={() => setBetData({...betData, auto: false})} style={{ flex: 1, border: 'none', background: !betData.auto ? '#2c2d31' : 'transparent', color: '#fff', padding: '4px', borderRadius: '20px', fontSize: '12px' }}>Bet</button>
@@ -155,7 +159,15 @@ export default function F16AviatorFinal() {
     </div>
   );
 
-  if (!user) return <div style={{background: '#0b0f18', height: '100vh', color: 'white', display:'flex', justifyContent:'center', alignItems:'center'}} onClick={()=>setUser("USER_"+Math.floor(Math.random()*1000))}>Click to Enter Game</div>;
+  if (!user) return (
+    <div style={{background: '#0b0f18', height: '100vh', color: 'white', display:'flex', justifyContent:'center', alignItems:'center'}} onClick={()=>{
+        const guestId = "GUEST_" + Math.floor(Math.random() * 1000);
+        localStorage.setItem("f16_user", guestId);
+        setUser(guestId);
+    }}>
+        Click to Enter Game
+    </div>
+  );
 
   return (
     <div style={{ background: '#0b0f18', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif', overflowX:'hidden' }}>
@@ -164,7 +176,6 @@ export default function F16AviatorFinal() {
         <div style={{ color: '#00ff7b', fontWeight: 'bold' }}>{balance.toFixed(2)} PKR</div>
       </div>
       
-      {/* ہسٹری پٹی */}
       <div style={{ display: 'flex', alignItems:'center', gap: '5px', padding: '5px', background: '#070a10', position:'relative' }}>
         <div style={{ display:'flex', gap:'5px', overflowX:'hidden', flex: 1 }}>
           {history.slice(0, 10).map((h, i) => (
