@@ -1,8 +1,29 @@
 "use client";
 import React, { useState, useEffect, useRef } from 'react';
+// 1. فائر بیس کے ضروری فنکشنز امپورٹ کریں
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, set, get, child } from "firebase/database";
+
+// 2. آپ کا فائر بیس کنفیگریشن کوڈ
+const firebaseConfig = {
+  apiKey: "AIzaSyBQ3gSnL9qb8lR1oTPAFVkg3-ka0Lj_uz4",
+  authDomain: "f-16-5fbf8.firebaseapp.com",
+  projectId: "f-16-5fbf8",
+  storageBucket: "f-16-5fbf8.firebasestorage.app",
+  messagingSenderId: "1018743993015",
+  appId: "1:1018743993015:web:bb1735bb56da5076149332"
+};
+
+// فائر بیس کو انیشلائز کریں
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
 export default function F16AviatorFinal() {
-  const [balance, setBalance] = useState(441.55);
+  // بیلنس اب فائر بیس سے آئے گا، اس لیے شروع میں 0 رکھ دیں
+  const [balance, setBalance] = useState(0);
+  const [userPhone, setUserPhone] = useState(""); // یوزر کی شناخت کے لیے
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  
   const [multiplier, setMultiplier] = useState(1.00);
   const [gameState, setGameState] = useState<'waiting' | 'flying' | 'crashed'>('waiting');
   const [history, setHistory] = useState(["1.14x", "3.5x", "3.78x", "2.82x", "4.54x", "5.72x"]);
@@ -11,13 +32,36 @@ export default function F16AviatorFinal() {
 
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // میوزک کے لیے ریفرنسز
   const mainAudioRef = useRef<HTMLAudioElement | null>(null);
   const cashOutAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const [bet1, setBet1] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
   const [bet2, setBet2] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
+
+  // 3. سائن اپ اور لاگ ان کا فنکشن (جو بیلنس لوڈ کرے گا)
+  const handleLogin = async (phone: string) => {
+    if (phone.length < 10) return alert("براہ کرم صحیح نمبر لکھیں");
+    setUserPhone(phone);
+    const dbRef = ref(db);
+    const snapshot = await get(child(dbRef, `users/${phone}`));
+    
+    if (snapshot.exists()) {
+      setBalance(snapshot.val().balance);
+    } else {
+      // نیا یوزر ہے تو 1000 روپے گفٹ دیں اور فائر بیس میں سیو کریں
+      const initialBalance = 1000;
+      await set(ref(db, 'users/' + phone), { balance: initialBalance });
+      setBalance(initialBalance);
+    }
+    setIsLoggedIn(true);
+  };
+
+  // بیلنس کو فائر بیس میں اپڈیٹ کرنے کا فنکشن
+  const updateFirebaseBalance = (newBalance: number) => {
+    if (userPhone) {
+      set(ref(db, 'users/' + userPhone), { balance: newBalance });
+    }
+  };
 
   const startRound = () => {
     setGameState('flying');
@@ -35,7 +79,6 @@ export default function F16AviatorFinal() {
     gameTimerRef.current = setInterval(() => {
       setMultiplier(prev => {
         const next = parseFloat((prev + 0.02).toFixed(2));
-        
         if (bet1.hasBet && bet1.auto && next >= bet1.autoValue) cashOut(1, next);
         if (bet2.hasBet && bet2.auto && next >= bet2.autoValue) cashOut(2, next);
 
@@ -73,36 +116,44 @@ export default function F16AviatorFinal() {
 
   const cashOut = (panel: number, currentMult: number) => {
     if (gameState !== 'flying') return;
-
-    // کیش آؤٹ کی آواز
     if (cashOutAudioRef.current) {
       cashOutAudioRef.current.currentTime = 0;
       cashOutAudioRef.current.play().catch(() => {});
     }
 
     const winningMult = parseFloat(currentMult.toFixed(2));
+    let winAmount = 0;
+
     if (panel === 1 && bet1.hasBet) {
-      setBalance(prev => prev + (bet1.amount * winningMult));
+      winAmount = bet1.amount * winningMult;
+      const newBal = balance + winAmount;
+      setBalance(newBal);
+      updateFirebaseBalance(newBal); // بیلنس سیو کریں
       setBet1(prev => ({ ...prev, hasBet: false }));
     } else if (panel === 2 && bet2.hasBet) {
-      setBalance(prev => prev + (bet2.amount * winningMult));
+      winAmount = bet2.amount * winningMult;
+      const newBal = balance + winAmount;
+      setBalance(newBal);
+      updateFirebaseBalance(newBal); // بیلنس سیو کریں
       setBet2(prev => ({ ...prev, hasBet: false }));
     }
   };
 
   const placeBet = (panel: number) => {
     if (gameState !== 'waiting') return;
-    
-    // یوزر کی پہلی کلک پر میوزک شروع کرنا
     if (mainAudioRef.current && mainAudioRef.current.paused) {
       mainAudioRef.current.play().catch(() => {});
     }
 
     if (panel === 1 && balance >= bet1.amount) {
-      setBalance(prev => prev - bet1.amount);
+      const newBal = balance - bet1.amount;
+      setBalance(newBal);
+      updateFirebaseBalance(newBal); // بیلنس سیو کریں
       setBet1(prev => ({ ...prev, hasBet: true }));
     } else if (panel === 2 && balance >= bet2.amount) {
-      setBalance(prev => prev - bet2.amount);
+      const newBal = balance - bet2.amount;
+      setBalance(newBal);
+      updateFirebaseBalance(newBal); // بیلنس سیو کریں
       setBet2(prev => ({ ...prev, hasBet: true }));
     }
   };
@@ -113,14 +164,14 @@ export default function F16AviatorFinal() {
   };
 
   useEffect(() => {
-    startRound();
+    // شروع میں راؤنڈ تبھی شروع ہو گا جب لاگ ان ہو جائے گا
+    if (isLoggedIn) startRound();
     return () => {
       if (gameTimerRef.current) clearInterval(gameTimerRef.current);
       if (loadingTimerRef.current) clearInterval(loadingTimerRef.current);
     };
-  }, []);
+  }, [isLoggedIn]);
 
-  // بٹنوں کا ڈیزائن بالکل ویسا ہی جیسا اسکرین شاٹ میں ہے
   const BetControlPanel = ({ betData, setBetData, panelNum }: any) => (
     <div style={{ background: '#1b1c20', padding: '12px', borderRadius: '15px', border: '1px solid #2c2d31' }}>
       <div style={{ display: 'flex', background: '#000', borderRadius: '20px', padding: '2px', marginBottom: '10px' }}>
@@ -157,6 +208,19 @@ export default function F16AviatorFinal() {
     </div>
   );
 
+  // اگر لاگ ان نہیں ہے تو سائن اپ اسکرین دکھائیں
+  if (!isLoggedIn) {
+    return (
+      <div style={{ background: '#0b0f18', height: '100vh', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ background: '#1b1c20', padding: '30px', borderRadius: '20px', width: '300px', textAlign: 'center', border: '2px solid red' }}>
+          <h2 style={{ color: 'red', fontSize: '30px', fontWeight: 'bold', marginBottom: '20px' }}>F-16 LOGIN</h2>
+          <input id="loginPhone" type="text" placeholder="موبائل نمبر" style={{ width: '100%', padding: '10px', marginBottom: '15px', borderRadius: '10px', border: 'none', background: '#333', color: 'white' }} />
+          <button onClick={() => handleLogin((document.getElementById('loginPhone') as HTMLInputElement).value)} style={{ width: '100%', padding: '10px', borderRadius: '10px', border: 'none', background: 'red', color: 'white', fontWeight: 'bold', fontSize: '18px' }}>داخل ہوں</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ background: '#0b0f18', color: 'white', minHeight: '100vh', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px', background: '#121826' }}>
@@ -170,19 +234,7 @@ export default function F16AviatorFinal() {
         ))}
       </div>
 
-      {/* گیم اسکرین مع بیک گراؤنڈ */}
-      <div style={{ 
-        position: 'relative', 
-        width: '95%', 
-        margin: '10px auto', 
-        borderRadius: '15px', 
-        overflow: 'hidden', 
-        border: '1px solid #333', 
-        aspectRatio: '16/9', 
-        background: 'url(/background.jpg)', 
-        backgroundSize: 'cover',
-        backgroundPosition: 'center'
-      }}>
+      <div style={{ position: 'relative', width: '95%', margin: '10px auto', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333', aspectRatio: '16/9', background: 'url(/background.jpg)', backgroundSize: 'cover', backgroundPosition: 'center' }}>
         <div style={{ position: 'absolute', width: '100%', textAlign: 'center', top: '35%', fontSize: '50px', fontWeight: 'bold', zIndex: 10, textShadow: '2px 2px 10px rgba(0,0,0,0.8)' }}>
           {gameState === 'waiting' ? <span style={{fontSize: '16px', color: 'red'}}>WAITING FOR NEXT ROUND...</span> : multiplier.toFixed(2) + "x"}
         </div>
@@ -190,7 +242,7 @@ export default function F16AviatorFinal() {
         {gameState === 'flying' && (
           <>
             <svg style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 4 }}>
-              <path d={`M 0 180 Q ${planePos.x/2} ${180 - planePos.y/1.5} ${planePos.x} ${180 - planePos.y}`} stroke="#28a745" strokeWidth="4" fill="none" />
+              <path d={`M 0 180 Q ${planePos.x/2} ${180 - planePos.y/1.5} ${planePos.x} ${180 - planePos.y}`} stroke="red" strokeWidth="4" fill="none" />
             </svg>
             <img src="/jet.png" style={{ position: 'absolute', width: '80px', left: planePos.x - 20, bottom: planePos.y - 10, zIndex: 5 }} alt="jet" />
           </>
@@ -208,7 +260,6 @@ export default function F16AviatorFinal() {
         <BetControlPanel betData={bet2} setBetData={setBet2} panelNum={2} />
       </div>
 
-      {/* آڈیو فائلز */}
       <audio ref={mainAudioRef} src="/background-track.mp3" loop />
       <audio ref={cashOutAudioRef} src="/cash-out.mp3" />
     </div>
