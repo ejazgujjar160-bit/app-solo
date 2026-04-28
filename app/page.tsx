@@ -11,25 +11,24 @@ export default function F16AviatorFinal() {
 
   const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
   const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // میوزک کے لیے ریفرنسز
+  const mainAudioRef = useRef<HTMLAudioElement | null>(null);
+  const cashOutAudioRef = useRef<HTMLAudioElement | null>(null);
 
-  // بیٹنگ سٹیٹس (ڈیفالٹ رقم 16.00 جیسی اسکرین شاٹ میں ہے)
   const [bet1, setBet1] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
   const [bet2, setBet2] = useState({ amount: 16.00, hasBet: false, auto: false, autoValue: 2.00 });
 
-  // راؤنڈ شروع کرنے کا لاجک (25% وننگ ریٹ کے ساتھ)
   const startRound = () => {
     setGameState('flying');
     setMultiplier(1.00);
     setPlanePos({ x: 0, y: 0 });
 
-    // --- بہتر کنٹرولڈ لاجک (سو میں سے 25 جیت) ---
     const chance = Math.random() * 100;
     let crashAt;
     if (chance < 75) {
-      // 75% بار جہاز 1.10 سے 1.95 کے درمیان گرے گا (لوگ ہاریں گے)
       crashAt = (Math.random() * 0.85 + 1.10).toFixed(2);
     } else {
-      // 25% بار جہاز 2.00 سے 8.00 تک جائے گا (لوگ جیتیں گے)
       crashAt = (Math.random() * 6 + 2.00).toFixed(2);
     }
 
@@ -46,7 +45,6 @@ export default function F16AviatorFinal() {
           return next;
         }
 
-        // جہاز کی موومنٹ کو اسکرین کے اندر رکھنا
         const x = Math.min(next * 30, 260);
         const y = Math.min(next * 20, 140);
         setPlanePos({ x, y });
@@ -75,6 +73,13 @@ export default function F16AviatorFinal() {
 
   const cashOut = (panel: number, currentMult: number) => {
     if (gameState !== 'flying') return;
+
+    // کیش آؤٹ کی آواز
+    if (cashOutAudioRef.current) {
+      cashOutAudioRef.current.currentTime = 0;
+      cashOutAudioRef.current.play().catch(() => {});
+    }
+
     const winningMult = parseFloat(currentMult.toFixed(2));
     if (panel === 1 && bet1.hasBet) {
       setBalance(prev => prev + (bet1.amount * winningMult));
@@ -87,6 +92,12 @@ export default function F16AviatorFinal() {
 
   const placeBet = (panel: number) => {
     if (gameState !== 'waiting') return;
+    
+    // یوزر کی پہلی کلک پر میوزک شروع کرنا
+    if (mainAudioRef.current && mainAudioRef.current.paused) {
+      mainAudioRef.current.play().catch(() => {});
+    }
+
     if (panel === 1 && balance >= bet1.amount) {
       setBalance(prev => prev - bet1.amount);
       setBet1(prev => ({ ...prev, hasBet: true }));
@@ -109,7 +120,7 @@ export default function F16AviatorFinal() {
     };
   }, []);
 
-  // --- اسکرین شاٹ والا ڈیزائن کمپوننٹ ---
+  // بٹنوں کا ڈیزائن بالکل ویسا ہی جیسا اسکرین شاٹ میں ہے
   const BetControlPanel = ({ betData, setBetData, panelNum }: any) => (
     <div style={{ background: '#1b1c20', padding: '12px', borderRadius: '15px', border: '1px solid #2c2d31' }}>
       <div style={{ display: 'flex', background: '#000', borderRadius: '20px', padding: '2px', marginBottom: '10px' }}>
@@ -131,14 +142,13 @@ export default function F16AviatorFinal() {
           </div>
         </div>
 
-        {/* متحرک بٹن: Bet یا Cash Out */}
         {!betData.hasBet ? (
-          <button onClick={() => placeBet(panelNum)} disabled={gameState !== 'waiting'} style={{ flex: 1, background: gameState === 'waiting' ? '#28a745' : '#444', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
+          <button onClick={() => placeBet(panelNum)} disabled={gameState !== 'waiting'} style={{ flex: 2, background: gameState === 'waiting' ? '#28a745' : '#444', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
             <div style={{ fontSize: '18px', fontWeight: 'bold' }}>BET</div>
             <div style={{ fontSize: '12px' }}>{betData.amount.toFixed(2)} PKR</div>
           </button>
         ) : (
-          <button onClick={() => cashOut(panelNum, multiplier)} disabled={gameState !== 'flying'} style={{ flex: 1, background: '#ff9800', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
+          <button onClick={() => cashOut(panelNum, multiplier)} disabled={gameState !== 'flying'} style={{ flex: 2, background: '#ff9800', border: 'none', borderRadius: '12px', color: 'white', cursor: 'pointer' }}>
             <div style={{ fontSize: '14px', fontWeight: 'bold' }}>CASH OUT</div>
             <div style={{ fontSize: '16px' }}>{(betData.amount * multiplier).toFixed(2)} PKR</div>
           </button>
@@ -160,8 +170,20 @@ export default function F16AviatorFinal() {
         ))}
       </div>
 
-      <div style={{ position: 'relative', width: '95%', margin: '10px auto', borderRadius: '15px', overflow: 'hidden', border: '1px solid #333', aspectRatio: '16/9', background: '#000' }}>
-        <div style={{ position: 'absolute', width: '100%', textAlign: 'center', top: '35%', fontSize: '50px', fontWeight: 'bold', zIndex: 10 }}>
+      {/* گیم اسکرین مع بیک گراؤنڈ */}
+      <div style={{ 
+        position: 'relative', 
+        width: '95%', 
+        margin: '10px auto', 
+        borderRadius: '15px', 
+        overflow: 'hidden', 
+        border: '1px solid #333', 
+        aspectRatio: '16/9', 
+        background: 'url(/background.jpg)', 
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}>
+        <div style={{ position: 'absolute', width: '100%', textAlign: 'center', top: '35%', fontSize: '50px', fontWeight: 'bold', zIndex: 10, textShadow: '2px 2px 10px rgba(0,0,0,0.8)' }}>
           {gameState === 'waiting' ? <span style={{fontSize: '16px', color: 'red'}}>WAITING FOR NEXT ROUND...</span> : multiplier.toFixed(2) + "x"}
         </div>
         
@@ -170,7 +192,7 @@ export default function F16AviatorFinal() {
             <svg style={{ position: 'absolute', width: '100%', height: '100%', zIndex: 4 }}>
               <path d={`M 0 180 Q ${planePos.x/2} ${180 - planePos.y/1.5} ${planePos.x} ${180 - planePos.y}`} stroke="#28a745" strokeWidth="4" fill="none" />
             </svg>
-            <img src="/f16-jet.png" style={{ position: 'absolute', width: '80px', left: planePos.x - 20, bottom: planePos.y - 10, zIndex: 5 }} alt="jet" />
+            <img src="/jet.png" style={{ position: 'absolute', width: '80px', left: planePos.x - 20, bottom: planePos.y - 10, zIndex: 5 }} alt="jet" />
           </>
         )}
 
@@ -185,6 +207,10 @@ export default function F16AviatorFinal() {
         <BetControlPanel betData={bet1} setBetData={setBet1} panelNum={1} />
         <BetControlPanel betData={bet2} setBetData={setBet2} panelNum={2} />
       </div>
+
+      {/* آڈیو فائلز */}
+      <audio ref={mainAudioRef} src="/background-track.mp3" loop />
+      <audio ref={cashOutAudioRef} src="/cash-out.mp3" />
     </div>
   );
 }
