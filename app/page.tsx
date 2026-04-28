@@ -102,19 +102,20 @@ export default function F16AviatorFinal() {
     let time = 100;
     setTimeout(() => {
       setGameState('waiting');
-      loadingTimerRef.current = setInterval(() => {
+      const interval = setInterval(() => {
         time -= 2;
         setLoadingProgress(time);
         if (time <= 0) {
-          clearInterval(loadingTimerRef.current);
+          clearInterval(interval);
           startRound();
         }
       }, 100);
+      loadingTimerRef.current = interval;
     }, 2000);
   };
 
   const cashOut = (panel: number) => {
-    if (gameState !== 'flying') return;
+    if (gameState !== 'flying' || !user) return;
     let win = 0;
     if (panel === 1 && bet1.hasBet) win = bet1.amount * multiplier;
     if (panel === 2 && bet2.hasBet) win = bet2.amount * multiplier;
@@ -130,7 +131,7 @@ export default function F16AviatorFinal() {
   };
 
   const placeBet = (panel: number) => {
-    if (gameState !== 'waiting') return;
+    if (gameState !== 'waiting' || !user) return;
     const amt = panel === 1 ? bet1.amount : bet2.amount;
     if (balance >= amt) {
       const newBalance = balance - amt;
@@ -152,7 +153,7 @@ export default function F16AviatorFinal() {
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', background: '#000', borderRadius: '20px', padding: '5px 10px' }}>
             <button onClick={() => setBetData({...betData, amount: Math.max(1, betData.amount - 1)})} style={{color: 'white', background: 'none', border: 'none'}}>−</button>
-            <span>{betData.amount.toFixed(2)}</span>
+            <span style={{ color: 'white' }}>{betData.amount.toFixed(2)}</span>
             <button onClick={() => setBetData({...betData, amount: betData.amount + 1})} style={{color: 'white', background: 'none', border: 'none'}}>+</button>
           </div>
         </div>
@@ -169,7 +170,7 @@ export default function F16AviatorFinal() {
 
   if (!user) {
     return (
-      <div style={{ background: '#0b0f18', height: '100vh', display: 'flex', flexDirection: 'center', justifyContent: 'center', alignItems: 'center', color: 'white', flexDirection: 'column' }}>
+      <div style={{ background: '#0b0f18', height: '100vh', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: 'white' }}>
         <h2 style={{color: 'red'}}>F-16 AVIATOR</h2>
         <input type="text" placeholder="Mobile Number" value={phone} onChange={(e)=>setPhone(e.target.value)} style={{padding:'12px', margin:'5px', width:'250px', borderRadius:'8px', color:'black'}}/>
         <input type="password" placeholder="Password" value={password} onChange={(e)=>setPassword(e.target.value)} style={{padding:'12px', margin:'5px', width:'250px', borderRadius:'8px', color:'black'}}/>
