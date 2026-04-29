@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, update, get, set, runTransaction } from "firebase/database";
-import { getAuth, RecaptchaVerifier, signInWithPhoneNumber } from "firebase/auth";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, ConfirmationResult } from "firebase/auth";
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -19,50 +19,53 @@ const db = getDatabase(app);
 const auth = getAuth(app);
 
 export default function F16AviatorPro() {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState<string | null>(null);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [otp, setOtp] = useState("");
-  const [confirmationResult, setConfirmationResult] = useState(null);
-  const [authStep, setAuthStep] = useState('choice'); 
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
+  const [authStep, setAuthStep] = useState<'choice' | 'phone' | 'otp'>('choice'); 
   
-  const [balance, setBalance] = useState(0);
-  const [multiplier, setMultiplier] = useState(1.00);
-  const [gameState, setGameState] = useState('waiting'); 
-  const [history, setHistory] = useState(["1.14x", "3.5x", "1.20x", "1.05x", "2.10x"]);
+  const [balance, setBalance] = useState<number>(0);
+  const [multiplier, setMultiplier] = useState<number>(1.00);
+  const [gameState, setGameState] = useState<'waiting' | 'flying' | 'crashed'>('waiting'); 
+  const [history, setHistory] = useState<string[]>(["1.14x", "3.5x", "1.20x", "1.05x", "2.10x"]);
   const [planePos, setPlanePos] = useState({ x: 0, y: 0 });
   const [loadingProgress, setLoadingProgress] = useState(0);
   
   const [bet1, setBet1] = useState({ amount: 16.00, hasBet: false, auto: false, autoVal: 2.0, cashedOut: false });
   const [bet2, setBet2] = useState({ amount: 16.00, hasBet: false, auto: false, autoVal: 2.0, cashedOut: false });
 
-  const gameTimerRef = useRef(null);
+  const gameTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // --- Auth Logic (اصلی OTP سسٹم) ---
+  // --- Auth Logic (TypeScript Fix) ---
   const setupRecaptcha = () => {
-    if (!window.recaptchaVerifier) {
-      window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        'size': 'invisible'
-      });
+    if (typeof window !== 'undefined') {
+      if (!(window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+          'size': 'invisible'
+        });
+      }
     }
   };
 
   const sendOTP = async () => {
     if(!phoneNumber.startsWith('+')) {
-        alert("براہ کرم نمبر +92 کے ساتھ لکھیں");
+        alert("براہ کرم نمبر ملک کے کوڈ (جیسے +92) کے ساتھ لکھیں");
         return;
     }
     setupRecaptcha();
-    const appVerifier = window.recaptchaVerifier;
+    const appVerifier = (window as any).recaptchaVerifier;
     try {
       const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
       setConfirmationResult(confirmation);
       setAuthStep('otp');
-    } catch (error) {
-      alert("نمبر غلط ہے یا فائر بیس سیٹنگز ادھوری ہیں: " + error.message);
+    } catch (error: any) {
+      alert("ایرر: " + error.message);
     }
   };
 
   const verifyOTP = async () => {
+    if (!confirmationResult) return;
     try {
       const result = await confirmationResult.confirm(otp);
       const uid = result.user.uid;
@@ -80,7 +83,7 @@ export default function F16AviatorPro() {
       setUser(uid);
       localStorage.setItem("f16_session", uid);
     } catch (error) {
-      alert("غلط کوڈ! دوبارہ کوشش کریں");
+      alert("غلط OTP کوڈ!");
     }
   };
 
@@ -98,8 +101,7 @@ export default function F16AviatorPro() {
     return () => { if(gameTimerRef.current) clearInterval(gameTimerRef.current); };
   }, []);
 
-  // بیلنس اپڈیٹ کرنے کا محفوظ طریقہ (Transaction)
-  const updateBalanceServer = async (amountChange) => {
+  const updateBalanceServer = async (amountChange: number) => {
     if (!user) return;
     const userRef = ref(db, 'users/' + user + '/balance');
     await runTransaction(userRef, (currentBalance) => {
@@ -127,7 +129,6 @@ export default function F16AviatorPro() {
     if (bet2.hasBet) cost += bet2.amount;
 
     if (cost > balance) {
-      alert("بیلنس کم ہے!");
       setBet1(b => ({...b, hasBet: false}));
       setBet2(b => ({...b, hasBet: false}));
       startWaitingPeriod();
@@ -139,8 +140,7 @@ export default function F16AviatorPro() {
     setGameState('flying');
     setMultiplier(1.00);
     
-    // Multiplier Logic (45% Loss, 1% Jackpot 7000x)
-    let crashAt;
+    let crashAt: number;
     const luck = Math.random() * 100;
     if (luck <= 45) crashAt = parseFloat((Math.random() * 0.2 + 1.01).toFixed(2));
     else if (luck >= 99) crashAt = parseFloat((Math.random() * 7000 + 100).toFixed(2));
@@ -151,10 +151,9 @@ export default function F16AviatorPro() {
         const next = parseFloat((prev + (prev < 3 ? 0.01 : prev * 0.02)).toFixed(2));
         
         if (next >= crashAt) {
-          clearInterval(gameTimerRef.current);
+          if(gameTimerRef.current) clearInterval(gameTimerRef.current);
           setGameState('crashed');
           setHistory(h => [`${next}x`, ...h].slice(0, 15));
-          // راؤنڈ ختم ہونے پر بیٹس ری سیٹ (تاکہ دوبارہ خود نہ لگیں)
           setBet1(b => ({...b, hasBet: false, cashedOut: false}));
           setBet2(b => ({...b, hasBet: false, cashedOut: false}));
           setTimeout(() => startWaitingPeriod(), 3000);
@@ -166,7 +165,7 @@ export default function F16AviatorPro() {
     }, 80);
   };
 
-  const handleCashOut = (num) => {
+  const handleCashOut = (num: number) => {
     if (gameState !== 'flying') return;
     if (num === 1 && bet1.hasBet && !bet1.cashedOut) {
       updateBalanceServer(bet1.amount * multiplier);
@@ -177,7 +176,7 @@ export default function F16AviatorPro() {
     }
   };
 
-  // --- UI ---
+  // --- UI Components ---
   if (!user) {
     return (
       <div style={{ background: '#0b0f18', height: '100vh', color: 'white', display:'flex', flexDirection:'column', justifyContent:'center', alignItems:'center', padding:'20px' }}>
@@ -245,7 +244,7 @@ export default function F16AviatorPro() {
   );
 }
 
-function BetPanel({ data, setData, onCash, isFlying }) {
+function BetPanel({ data, setData, onCash, isFlying }: any) {
   return (
     <div style={{ background: '#1b1c20', padding: '15px', borderRadius: '18px', marginBottom: '10px', border: '1px solid #2c2d31' }}>
       <div style={{ display: 'flex', gap: '12px' }}>
